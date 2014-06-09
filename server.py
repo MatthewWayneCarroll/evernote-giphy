@@ -11,13 +11,12 @@ import binascii
 giphy_api_key="dc6zaTOxFJmzC" #public beta key
 evernote_auth_token = "insert evernote auth token here"
 
-
 app=Flask(__name__)
-
 
 @app.route("/", methods=['POST','GET'])
 def main():
-	""" GET: gets random gif from giphy and displays it along with the option to see another gif and to save the gif to their evernote account POST: shows confomation of evernote gif save and presents option to return to main page or see the note in evernote"""
+	""" GET: gets random gif from giphy and displays it along with the option to see another gif and to 
+	save the gif to their evernote account"""
 	if request.method == "GET":	
 		#get random gif from giphy api
 		response=requests.get("http://api.giphy.com/v1/gifs/random?api_key="+giphy_api_key).json()
@@ -35,6 +34,9 @@ def main():
 		giphy_tags=giphy_tags[:-2]
 
 		return render_template("index.html", giphy_url=giphy_url, giphy_id=giphy_id, giphy_tags=giphy_tags) 
+	
+	"""POST: shows confomation of evernote gif save and presents option 
+	to return to main page or see the note in evernote"""
 	if request.method == 'POST':
 		if request.form['giphy_id'] and request.form['giphy_tags']:
 			giphy_id=request.form['giphy_id']
@@ -91,37 +93,34 @@ def main():
 			image= requests.get(giphy_url, stream=True).content
 			md5 = hashlib.md5()
 			md5.update(image)
-			hash_hex = md5.digest()
+			gif_hash = md5.digest()
 
 			data = Types.Data()
 			data.size = len(image)
-			data.bodyHash = hash_hex
+			data.bodyHash = gif_hash
 			data.body = image
 
 			resource = Types.Resource()
 			resource.mime = 'image/gif'
 			resource.data = data
 
-			hash_hex2 = binascii.hexlify(hash_hex)
+			hash_hex = binascii.hexlify(gif_hash)
 
-			#if not create a new note for the gif
-			note = Types.Note()
-			#create note for our giphy notebook
-			note.notebookGuid=giphyNotebookGuid
 			
-			note.title=response['data']['username']+"-"+response['data']['id']
+			note = Types.Note()
+			note.notebookGuid=giphyNotebookGuid #create note for our Giphy notebook
+			
+			note.title=note_title #name based on Giphy username and id
 			note.content = '<?xml version="1.0" encoding="UTF-8"?>'
 			note.content += '<!DOCTYPE en-note SYSTEM ' \
 			    '"http://xml.evernote.com/pub/enml2.dtd">'
 			note.content += '<en-note>'+giphy_tags+'<br/>' #add tags to note contents
-			
-			note.content += '<en-media type="image/png" hash="' + hash_hex2 + '"/>'
+			note.content += '<en-media type="image/png" hash="' + hash_hex + '"/>'
 			note.content += '</en-note>'
+			
+			note.resources = [resource] # Now, add the new Resource to the note's list of resources
 
-			# Now, add the new Resource to the note's list of resources
-			note.resources = [resource]
-
-			note=note_store.createNote(note)
+			note=note_store.createNote(note) # create the note
 
 			evernote_url="http://www.matthewwaynecarroll.com"
 			return render_template("saved.html", giphy_url=giphy_url, evernote_url=evernote_url)
