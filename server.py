@@ -5,11 +5,13 @@ import hashlib
 import evernote.edam.type.ttypes as Types
 import evernote.edam.notestore.ttypes as NoteStoreTypes
 import evernote.edam.notestore.NoteStore as NoteStore
-#from evernote.edam.notestore.ttypes import NotesMetadataResultSpec
+from evernote.edam.notestore.ttypes import NotesMetadataResultSpec
 import binascii
 
 giphy_api_key="dc6zaTOxFJmzC" #public beta key
-evernote_auth_token = "insert evernote auth token here"
+evernote_auth_token = "put evernote dev token here"
+EN_URL="https://sandbox.evernote.com"
+
 
 app=Flask(__name__)
 
@@ -66,30 +68,22 @@ def main():
 
 			#create note title with user name + giphy id for unique identifier
 			note_title=response['data']['username']+"-"+response['data']['id']
-			
-			#check if not for gif already exists
-			'''
+
+			#check to see if note exists already
 			notebook_filter=NoteStoreTypes.NoteFilter()
 			notebook_filter.guid=giphyNotebookGuid
 			result_spec = NotesMetadataResultSpec(includeTitle=True)
-			noteList    = note_store.findNotesMetadata(evernote_auth_token, notebook_filter,0 , 4000, result_spec)
-
-			
-			print noteList
-			print type(noteList)
-
-			# note is an instance of NoteMetadata
-			# result_list is an instance of NotesMetadataList
-			for note in noteList:
-			    print note.title
-
-
+			noteList    = note_store.findNotesMetadata(evernote_auth_token, notebook_filter,0 , 40000, result_spec)
 
 			for note in noteList.notes:
 				if note.title==note_title:
-					return render_template("saved.html", giphy_url=giphy_url, evernote_url=evernote_url)
-					'''
-
+					shardId=user_store.getUser(evernote_auth_token).shardId
+					shareKey=note_store.shareNote(evernote_auth_token, note.guid)
+					evernote_url="%s/shard/%s/sh/%s/%s" % (EN_URL,shardId,note.guid,shareKey)
+					return render_template("already_there.html", giphy_url=giphy_url, evernote_url=evernote_url)
+			
+			
+			#get image
 			image= requests.get(giphy_url, stream=True).content
 			md5 = hashlib.md5()
 			md5.update(image)
@@ -121,8 +115,11 @@ def main():
 			note.resources = [resource] # Now, add the new Resource to the note's list of resources
 
 			note=note_store.createNote(note) # create the note
-
-			evernote_url="http://www.matthewwaynecarroll.com"
+			
+			user=user_store.getUser(evernote_auth_token)
+			shardId=user.shardId
+			shareKey=note_store.shareNote(evernote_auth_token, note.guid)
+			evernote_url="%s/shard/%s/sh/%s/%s" % (EN_URL,shardId,note.guid,shareKey)
 			return render_template("saved.html", giphy_url=giphy_url, evernote_url=evernote_url)
 		else:
 			return "error finding the gif"
