@@ -37,7 +37,7 @@ def main():
 
 		return render_template("index.html", giphy_url=giphy_url, giphy_id=giphy_id, giphy_tags=giphy_tags) 
 	
-	"""POST: shows confomation of evernote gif save and presents option 
+	"""POST: shows confirmation of evernote gif save and presents option 
 	to return to main page or see the note in evernote"""
 	if request.method == 'POST':
 		if request.form['giphy_id'] and request.form['giphy_tags']:
