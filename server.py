@@ -1,15 +1,23 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, session, redirect, url_for
+import urlparse
+import urllib
 import requests
+
 from evernote.api.client import EvernoteClient
-import hashlib
+import thrift.protocol.TBinaryProtocol as TBinaryProtocol
+import thrift.transport.THttpClient as THttpClient
+import evernote.edam.userstore.UserStore as UserStore
 import evernote.edam.type.ttypes as Types
 import evernote.edam.notestore.ttypes as NoteStoreTypes
 import evernote.edam.notestore.NoteStore as NoteStore
 from evernote.edam.notestore.ttypes import NotesMetadataResultSpec
+
+
 import binascii
+import hashlib
 
 giphy_api_key="dc6zaTOxFJmzC" #public beta key
-evernote_auth_token = "put evernote dev token here"
+evernote_auth_token = "Put Evernote Developer or Auth Token HERE"
 EN_URL="https://sandbox.evernote.com"
 
 
@@ -22,7 +30,7 @@ def main():
 	if request.method == "GET":	
 		#get random gif from giphy api
 		response=requests.get("http://api.giphy.com/v1/gifs/random?api_key="+giphy_api_key).json()
-		if not response['meta']['msg']=='OK':
+		if not response:
 			return "error with connection to giphy"
 
 		#get random image url and id from giphy api response
@@ -37,7 +45,7 @@ def main():
 
 		return render_template("index.html", giphy_url=giphy_url, giphy_id=giphy_id, giphy_tags=giphy_tags) 
 	
-	"""POST: shows confirmation of evernote gif save and presents option 
+	"""POST: shows confomation of evernote gif save and presents option 
 	to return to main page or see the note in evernote"""
 	if request.method == 'POST':
 		if request.form['giphy_id'] and request.form['giphy_tags']:
@@ -108,10 +116,31 @@ def main():
 			note.content = '<?xml version="1.0" encoding="UTF-8"?>'
 			note.content += '<!DOCTYPE en-note SYSTEM ' \
 			    '"http://xml.evernote.com/pub/enml2.dtd">'
-			note.content += '<en-note>'+giphy_tags+'<br/>' #add tags to note contents
-			note.content += '<en-media type="image/png" hash="' + hash_hex + '"/>'
+			note.content += '<en-note><br/>'
+			note.content += '<en-media type="image/gif" hash="' + hash_hex + '"/>'
 			note.content += '</en-note>'
-			
+
+						#add tags to the note
+			enTagList=note_store.listTags()
+			enTagListNames= [tag.name for tag in enTagList]
+			giphyTagList=giphy_tags.split(", ")
+
+			if not note.tagGuids:
+				note.tagGuids=[]
+
+			for giphyTag in giphyTagList:
+				if giphyTag in enTagListNames:
+					for tag in enTagList:
+						if tag.name == giphyTag:
+							note.tagGuids.append(tag.guid)
+				else:
+					tag=Types.Tag()
+					tag.name=gTag
+					tag=note_store.createTag(tag)
+
+					note.tagGuids.append(tag.guid)
+
+
 			note.resources = [resource] # Now, add the new Resource to the note's list of resources
 
 			note=note_store.createNote(note) # create the note
