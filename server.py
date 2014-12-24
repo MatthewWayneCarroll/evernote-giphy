@@ -17,34 +17,78 @@ import binascii
 import hashlib
 
 giphy_api_key="dc6zaTOxFJmzC" #public beta key
-evernote_auth_token = "Put Evernote Developer or Auth Token HERE"
+CONSUMER_KEY="newkey"
+CONSUMER_SECRET="0dfe87d8e68ad480"
 EN_URL="https://sandbox.evernote.com"
 
 
 app=Flask(__name__)
+app.config['SECRET_KEY'] = "Random547238907890String"
+
+#get auth data from evernote and set session varible access toke for evenrote client
+@app.route("/auth")
+def auth():
+	#if not request.data:
+	#	return "did not recive data from evernote"
+	client = EvernoteClient(
+	consumer_key=CONSUMER_KEY,
+	consumer_secret=CONSUMER_SECRET,
+	sandbox= True
+	)
+	#return str(request.args)
+	auth_token = client.get_access_token(session['oauth_token'], session['oauth_token_secret'], request.args['oauth_verifier'])
+	session["access_token"]=auth_token
+	return redirect(url_for("main"))
+
+
+#for debugging
+@app.route("/clear")
+def clears():
+	session["access_token"]=None
+	session['oauth_token']=None
+	session['oauth_token_secret']=None
+	return "no error <br> <br> <a href=http://localhost:8080/>here</a>"
 
 @app.route("/", methods=['POST','GET'])
 def main():
 	""" GET: gets random gif from giphy and displays it along with the option to see another gif and to 
 	save the gif to their evernote account"""
-	if request.method == "GET":	
-		#get random gif from giphy api
-		response=requests.get("http://api.giphy.com/v1/gifs/random?api_key="+giphy_api_key).json()
-		if not response:
-			return "error with connection to giphy"
+	if request.method == "GET": 
+		try:
+			session["access_token"]
+		except KeyError:
+			client = EvernoteClient(
+				consumer_key=CONSUMER_KEY,
+				consumer_secret=CONSUMER_SECRET,
+				sandbox= True
+				)
+			try:
+				request_token = client.get_request_token("http://localhost:8080/auth")
+				session['oauth_token'] = request_token['oauth_token'] 
+				session['oauth_token_secret'] = request_token['oauth_token_secret']
+				authorize_url = client.get_authorize_url(request_token)
+			except KeyError:
+				return "invliad API key and/or secret"
+			else:
+				return redirect(authorize_url) #render_template("login.html", authorize_url=authorize_url)
+		else:
+			#get random gif from giphy api
+			response=requests.get("http://api.giphy.com/v1/gifs/random?api_key="+giphy_api_key).json()
+			if not response:
+				return "error with connection to giphy"
 
-		#get random image url and id from giphy api response
-		giphy_url=response['data']['image_url']
-		giphy_id=response['data']['id']
+			#get random image url and id from giphy api response
+			giphy_url=response['data']['image_url']
+			giphy_id=response['data']['id']
 
-		#get tags and pass them to the page because the giphy api only show tags for random images
-		giphy_tags=''
-		for tag in response['data']['tags']:
-			giphy_tags+=tag+', '
-		giphy_tags=giphy_tags[:-2]
+			#get tags and pass them to the page because the giphy api only show tags for random images
+			giphy_tags=''
+			for tag in response['data']['tags']:
+				giphy_tags+=tag+', '
+			giphy_tags=giphy_tags[:-2]
 
-		return render_template("index.html", giphy_url=giphy_url, giphy_id=giphy_id, giphy_tags=giphy_tags) 
-	
+			return render_template("index.html", giphy_url=giphy_url, giphy_id=giphy_id, giphy_tags=giphy_tags) 
+		
 	"""POST: shows confomation of evernote gif save and presents option 
 	to return to main page or see the note in evernote"""
 	if request.method == 'POST':
@@ -54,7 +98,7 @@ def main():
 			response=requests.get("http://api.giphy.com/v1/gifs/"+giphy_id+"?api_key="+giphy_api_key).json()
 			giphy_url=response['data']['images']['original']['url']
 
-			client = EvernoteClient(token=evernote_auth_token, sandbox=True)
+			client = EvernoteClient(token=session["access_token"], sandbox=True)
 			user_store = client.get_user_store()
 			note_store = client.get_note_store()
 			notebooks = note_store.listNotebooks()
@@ -81,12 +125,12 @@ def main():
 			notebook_filter=NoteStoreTypes.NoteFilter()
 			notebook_filter.guid=giphyNotebookGuid
 			result_spec = NotesMetadataResultSpec(includeTitle=True)
-			noteList    = note_store.findNotesMetadata(evernote_auth_token, notebook_filter,0 , 40000, result_spec)
+			noteList    = note_store.findNotesMetadata(session["access_token"], notebook_filter,0 , 40000, result_spec)
 
 			for note in noteList.notes:
 				if note.title==note_title:
-					shardId=user_store.getUser(evernote_auth_token).shardId
-					shareKey=note_store.shareNote(evernote_auth_token, note.guid)
+					shardId=user_store.getUser(session["access_token"]).shardId
+					shareKey=note_store.shareNote(session["access_token"], note.guid)
 					evernote_url="%s/shard/%s/sh/%s/%s" % (EN_URL,shardId,note.guid,shareKey)
 					return render_template("already_there.html", giphy_url=giphy_url, evernote_url=evernote_url)
 			
@@ -135,7 +179,7 @@ def main():
 							note.tagGuids.append(tag.guid)
 				else:
 					tag=Types.Tag()
-					tag.name=gTag
+					tag.name=giphyTag
 					tag=note_store.createTag(tag)
 
 					note.tagGuids.append(tag.guid)
@@ -145,9 +189,9 @@ def main():
 
 			note=note_store.createNote(note) # create the note
 			
-			user=user_store.getUser(evernote_auth_token)
+			user=user_store.getUser(session["access_token"])
 			shardId=user.shardId
-			shareKey=note_store.shareNote(evernote_auth_token, note.guid)
+			shareKey=note_store.shareNote(session["access_token"], note.guid)
 			evernote_url="%s/shard/%s/sh/%s/%s" % (EN_URL,shardId,note.guid,shareKey)
 			return render_template("saved.html", giphy_url=giphy_url, evernote_url=evernote_url)
 		else:
@@ -160,4 +204,5 @@ def main():
 
 
 if __name__=="__main__":
-	app.run(debug=True)
+	app.secret_key="Random547238907890String"
+	app.run(host='0.0.0.0', debug=True, port=8080)
