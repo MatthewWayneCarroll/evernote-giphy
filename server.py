@@ -54,6 +54,7 @@ def main():
 	""" GET: gets random gif from giphy and displays it along with the option to see another gif and to 
 	save the gif to their evernote account"""
 	if request.method == "GET": 
+		#if their Evernote access_token session varible is not set redirect them to Evernote to authoirze the applicaiton
 		try:
 			session["access_token"]
 		except KeyError:
@@ -70,7 +71,10 @@ def main():
 			except KeyError:
 				return "invliad API key and/or secret"
 			else:
-				return redirect(authorize_url) #render_template("login.html", authorize_url=authorize_url)
+				print authorize_url
+				return redirect(authorize_url+"&suggestedNotebookName=Giphy") #suggest notebook name of giphy to user
+				#render_template("login.html", authorize_url=authorize_url)
+		#if we do have the access token proceed to show them a gif they can save to Evernote
 		else:
 			#get random gif from giphy api
 			response=requests.get("http://api.giphy.com/v1/gifs/random?api_key="+giphy_api_key).json()
@@ -93,31 +97,23 @@ def main():
 	to return to main page or see the note in evernote"""
 	if request.method == 'POST':
 		if request.form['giphy_id'] and request.form['giphy_tags']:
+			#get giphy_id from post request that was to be saved
 			giphy_id=request.form['giphy_id']
 			giphy_tags=request.form['giphy_tags']
 			response=requests.get("http://api.giphy.com/v1/gifs/"+giphy_id+"?api_key="+giphy_api_key).json()
 			giphy_url=response['data']['images']['original']['url']
 
+			#generate Evernote client
 			client = EvernoteClient(token=session["access_token"], sandbox=True)
 			user_store = client.get_user_store()
 			note_store = client.get_note_store()
 			notebooks = note_store.listNotebooks()
 			
+			#This is a single app notebook key
+			#List notebooks will return the one notebook we have access to
+			#use that notebook to save Giphy's to
+			giphyNotebookGuid=notebooks[0].guid
 			
-			#check if giphy notebook exists
-			for notebook in notebooks:
-				if notebook.name=="Giphy":
-					giphyNotebookGuid=notebook.guid
-					break
-			#if not create it
-			try: 
-				giphyNotebookGuid
-			except NameError:
-				notebook=Types.Notebook()
-				notebook.name="Giphy"
-				notebook=note_store.createNotebook(notebook)
-				giphyNotebookGuid=notebook.guid
-
 			#create note title with user name + giphy id for unique identifier
 			note_title=response['data']['username']+"-"+response['data']['id']
 
