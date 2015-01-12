@@ -18,13 +18,13 @@ import binascii
 import hashlib
 
 giphy_api_key="dc6zaTOxFJmzC" #public beta key
-CONSUMER_KEY="evernotefull"
-CONSUMER_SECRET="6b1b5333d67fa564"
+CONSUMER_KEY="PUT YOUR API KEY HERE"
+CONSUMER_SECRET="PUT YOUR API SECRET HERE"
 EN_URL="https://sandbox.evernote.com"
 
 
 app=Flask(__name__)
-app.config['SECRET_KEY'] = "Random547238907890String"
+app.config['SECRET_KEY'] = "secret key"
 
 #get auth data from evernote and set session varible access toke for evenrote client
 @app.route("/auth")
@@ -231,5 +231,5 @@ def main():
 
 
 if __name__=="__main__":
-	app.secret_key="Random547238907890String"
+	app.secret_key="secret key"
 	app.run(host='0.0.0.0', debug=True, port=8080)
