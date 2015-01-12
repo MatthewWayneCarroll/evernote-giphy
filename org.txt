@@ -1,0 +1,8 @@
+Pages
+homepage
+landing page
+saved page
+
+
+TODO:
+Search

@@ -11,14 +11,15 @@ import evernote.edam.type.ttypes as Types
 import evernote.edam.notestore.ttypes as NoteStoreTypes
 import evernote.edam.notestore.NoteStore as NoteStore
 from evernote.edam.notestore.ttypes import NotesMetadataResultSpec
+from evernote.edam.error.ttypes import EDAMUserException
 
 
 import binascii
 import hashlib
 
 giphy_api_key="dc6zaTOxFJmzC" #public beta key
-CONSUMER_KEY="newkey"
-CONSUMER_SECRET="0dfe87d8e68ad480"
+CONSUMER_KEY="evernotefull"
+CONSUMER_SECRET="6b1b5333d67fa564"
 EN_URL="https://sandbox.evernote.com"
 
 
@@ -96,7 +97,7 @@ def main():
 	"""POST: shows confomation of evernote gif save and presents option 
 	to return to main page or see the note in evernote"""
 	if request.method == 'POST':
-		if request.form['giphy_id'] and request.form['giphy_tags']:
+		if request.form['giphy_id']:
 			#get giphy_id from post request that was to be saved
 			giphy_id=request.form['giphy_id']
 			giphy_tags=request.form['giphy_tags']
@@ -112,8 +113,29 @@ def main():
 			#This is a single app notebook key
 			#List notebooks will return the one notebook we have access to
 			#use that notebook to save Giphy's to
-			giphyNotebookGuid=notebooks[0].guid
+
+			if len(notebooks)==1 and notebooks[0].defaultNotebook==False: #assume app notebok key
+				giphyNotebookGuid=notebooks[0].guid
 			
+			#if not create it
+			try: 
+				giphyNotebookGuid
+			except NameError:
+				for notebook in notebooks:
+					if notebook.name=="Giphy":
+						giphyNotebookGuid=notebook.guid
+						break
+			try:
+				giphyNotebookGuid
+			except NameError:
+				try:
+					notebook=Types.Notebook()
+					notebook.name="Giphy"
+					notebook=note_store.createNotebook(notebook)
+					giphyNotebookGuid=notebook.guid
+				except EDAMUserException: #single app notebok key
+					giphyNotebookGuid=notebooks[0].guid
+
 			#create note title with user name + giphy id for unique identifier
 			note_title=response['data']['username']+"-"+response['data']['id']
 
@@ -121,14 +143,17 @@ def main():
 			notebook_filter=NoteStoreTypes.NoteFilter()
 			notebook_filter.guid=giphyNotebookGuid
 			result_spec = NotesMetadataResultSpec(includeTitle=True)
-			noteList    = note_store.findNotesMetadata(session["access_token"], notebook_filter,0 , 40000, result_spec)
+			try:
+				noteList    = note_store.findNotesMetadata(session["access_token"], notebook_filter,0 , 40000, result_spec)
 
-			for note in noteList.notes:
-				if note.title==note_title:
-					shardId=user_store.getUser(session["access_token"]).shardId
-					shareKey=note_store.shareNote(session["access_token"], note.guid)
-					evernote_url="%s/shard/%s/sh/%s/%s" % (EN_URL,shardId,note.guid,shareKey)
-					return render_template("already_there.html", giphy_url=giphy_url, evernote_url=evernote_url)
+				for note in noteList.notes:
+					if note.title==note_title:
+						shardId=user_store.getUser(session["access_token"]).shardId
+						shareKey=note_store.shareNote(session["access_token"], note.guid)
+						evernote_url="%s/shard/%s/sh/%s/%s" % (EN_URL,shardId,note.guid,shareKey)
+						return render_template("already_there.html", giphy_url=giphy_url, evernote_url=evernote_url)
+			except EDAMUserException: #if the key doesn't have read permissions just move on
+				pass
 			
 			
 			#get image
@@ -160,7 +185,7 @@ def main():
 			note.content += '<en-media type="image/gif" hash="' + hash_hex + '"/>'
 			note.content += '</en-note>'
 
-						#add tags to the note
+			#add tags to the note
 			enTagList=note_store.listTags()
 			enTagListNames= [tag.name for tag in enTagList]
 			giphyTagList=giphy_tags.split(", ")
@@ -173,6 +198,8 @@ def main():
 					for tag in enTagList:
 						if tag.name == giphyTag:
 							note.tagGuids.append(tag.guid)
+				elif giphyTag=='':
+					continue
 				else:
 					tag=Types.Tag()
 					tag.name=giphyTag
@@ -187,8 +214,12 @@ def main():
 			
 			user=user_store.getUser(session["access_token"])
 			shardId=user.shardId
-			shareKey=note_store.shareNote(session["access_token"], note.guid)
-			evernote_url="%s/shard/%s/sh/%s/%s" % (EN_URL,shardId,note.guid,shareKey)
+			
+			try:
+				shareKey=note_store.shareNote(session["access_token"], note.guid)
+				evernote_url="%s/shard/%s/sh/%s/%s" % (EN_URL,shardId,note.guid,shareKey)
+			except EDAMUserException:
+				evernote_url=EN_URL + "/Home.action"
 			return render_template("saved.html", giphy_url=giphy_url, evernote_url=evernote_url)
 		else:
 			return "error finding the gif"
