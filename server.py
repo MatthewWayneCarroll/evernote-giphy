@@ -1,11 +1,9 @@
 from flask import Flask, render_template, request, session, redirect, url_for
-import urlparse
-import urllib
+
 import requests
+import sys
 
 from evernote.api.client import EvernoteClient
-import thrift.protocol.TBinaryProtocol as TBinaryProtocol
-import thrift.transport.THttpClient as THttpClient
 import evernote.edam.userstore.UserStore as UserStore
 import evernote.edam.type.ttypes as Types
 import evernote.edam.notestore.ttypes as NoteStoreTypes
@@ -13,74 +11,53 @@ import evernote.edam.notestore.NoteStore as NoteStore
 from evernote.edam.notestore.ttypes import NotesMetadataResultSpec
 from evernote.edam.error.ttypes import EDAMUserException
 
-
 import binascii
 import hashlib
 
 giphy_api_key="dc6zaTOxFJmzC" #public beta key
-CONSUMER_KEY="PUT YOUR API KEY HERE"
-CONSUMER_SECRET="PUT YOUR API SECRET HERE"
+CONSUMER_KEY="newkey"
+CONSUMER_SECRET="0dfe87d8e68ad480"
 EN_URL="https://sandbox.evernote.com"
+
+if CONSUMER_KEY=="PUT API KEY HERE" or CONSUMER_KEY=="" or CONSUMER_SECRET=="PUT API SECRET HERE" or CONSUMER_SECRET=="":
+	print """ERROR: Edit the server.py file and add your consumer key and consumer secret in the corresponding varibles at the begining of the file.\n\n If you do not have a Evernote consumer key and secret go to https://dev.evernote.com#apikey to get one (for free!).  This application is compatible with Basic, Full and App notebook API keys. """
+	sys.exit()
 
 
 app=Flask(__name__)
 app.config['SECRET_KEY'] = "secret key"
 
-#get auth data from evernote and set session varible access toke for evenrote client
+#get auth data from evernote and set session varible access token for evenrote client
 @app.route("/auth")
 def auth():
-	#if not request.data:
-	#	return "did not recive data from evernote"
-	client = EvernoteClient(
-	consumer_key=CONSUMER_KEY,
-	consumer_secret=CONSUMER_SECRET,
-	sandbox= True
-	)
-	#return str(request.args)
-	auth_token = client.get_access_token(session['oauth_token'], session['oauth_token_secret'], request.args['oauth_verifier'])
-	session["access_token"]=auth_token
-	return redirect(url_for("main"))
+	if "oauth_verifier" in request.args:
+		client = EvernoteClient(
+		consumer_key=CONSUMER_KEY,
+		consumer_secret=CONSUMER_SECRET,
+		sandbox= True
+		)
+		
+		try:
+			auth_token = client.get_access_token(session['oauth_token'], session['oauth_token_secret'], request.args['oauth_verifier'])
+		except:
+			return render_template("error.html", error_message="OAuth Error: Please approve access to the appliction %s" % CONSUMER_KEY)	
+		
+		session["access_token"]=auth_token
+		return redirect(url_for("main"))
+	else:
+		return render_template("error.html", error_message="OAuth Error: Please approve access to the appliction %s" % CONSUMER_KEY)
 
-
-#for debugging
-@app.route("/clear")
-def clears():
-	session["access_token"]=None
-	session['oauth_token']=None
-	session['oauth_token_secret']=None
-	return "no error <br> <br> <a href=http://localhost:8080/>here</a>"
 
 @app.route("/", methods=['POST','GET'])
 def main():
 	""" GET: gets random gif from giphy and displays it along with the option to see another gif and to 
 	save the gif to their evernote account"""
 	if request.method == "GET": 
-		#if their Evernote access_token session varible is not set redirect them to Evernote to authoirze the applicaiton
-		try:
-			session["access_token"]
-		except KeyError:
-			client = EvernoteClient(
-				consumer_key=CONSUMER_KEY,
-				consumer_secret=CONSUMER_SECRET,
-				sandbox= True
-				)
-			try:
-				request_token = client.get_request_token("http://localhost:8080/auth")
-				session['oauth_token'] = request_token['oauth_token'] 
-				session['oauth_token_secret'] = request_token['oauth_token_secret']
-				authorize_url = client.get_authorize_url(request_token)
-			except KeyError:
-				return "invliad API key and/or secret"
-			else:
-				print authorize_url
-				return redirect(authorize_url+"&suggestedNotebookName=Giphy") #suggest notebook name of giphy to user
-				#render_template("login.html", authorize_url=authorize_url)
-		#if we do have the access token proceed to show them a gif they can save to Evernote
-		else:
+		if "access_token" in session.keys():
 			#get random gif from giphy api
 			response=requests.get("http://api.giphy.com/v1/gifs/random?api_key="+giphy_api_key).json()
 			if not response:
-				return "error with connection to giphy"
+				return render_template("error.html", error_message="error with connection to giphy")
 
 			#get random image url and id from giphy api response
 			giphy_url=response['data']['image_url']
@@ -93,6 +70,28 @@ def main():
 			giphy_tags=giphy_tags[:-2]
 
 			return render_template("index.html", giphy_url=giphy_url, giphy_id=giphy_id, giphy_tags=giphy_tags) 
+			session["access_token"]
+		
+		#if their Evernote access_token session varible is not set redirect them to Evernote to authoirze the applicaiton
+		else:
+			client = EvernoteClient(
+				consumer_key=CONSUMER_KEY,
+				consumer_secret=CONSUMER_SECRET,
+				sandbox= True
+				)
+			try:
+				request_token = client.get_request_token("http://localhost:8080/auth")
+				session['oauth_token'] = request_token['oauth_token'] 
+				session['oauth_token_secret'] = request_token['oauth_token_secret']
+				authorize_url = client.get_authorize_url(request_token)
+			except KeyError:
+				return render_template("error.html", error_message="invalid API key and/or secret.  Please check the values of cosumer_key and sonsumer_secret in the server.py file are valid and <a href=\'/clear'>click here</a> to reset.")
+			else:
+				print authorize_url
+				return redirect(authorize_url+"&suggestedNotebookName=Giphy") #suggest notebook name of giphy to user
+
+		#if we do have the access token proceed to show them a gif they can save to Evernote
+		
 		
 	"""POST: shows confomation of evernote gif save and presents option 
 	to return to main page or see the note in evernote"""
@@ -109,25 +108,17 @@ def main():
 			user_store = client.get_user_store()
 			note_store = client.get_note_store()
 			notebooks = note_store.listNotebooks()
-			
-			#This is a single app notebook key
-			#List notebooks will return the one notebook we have access to
-			#use that notebook to save Giphy's to
 
+			notebooks_dict=dict()
+			for notebook in notebooks:
+				notebooks_dict[notebook.name]=notebook.guid
+
+			#if app notebook key use that notebok to save notes into
 			if len(notebooks)==1 and notebooks[0].defaultNotebook==False: #assume app notebok key
 				giphyNotebookGuid=notebooks[0].guid
-			
-			#if not create it
-			try: 
-				giphyNotebookGuid
-			except NameError:
-				for notebook in notebooks:
-					if notebook.name=="Giphy":
-						giphyNotebookGuid=notebook.guid
-						break
-			try:
-				giphyNotebookGuid
-			except NameError:
+			elif "Giphy" in notebooks_dict.keys(): #if notebook named Giphy exists use that notebook
+				giphyNotebookGuid=notebooks_dict['Giphy']
+			else: #make new notebook
 				try:
 					notebook=Types.Notebook()
 					notebook.name="Giphy"
@@ -145,7 +136,6 @@ def main():
 			result_spec = NotesMetadataResultSpec(includeTitle=True)
 			try:
 				noteList    = note_store.findNotesMetadata(session["access_token"], notebook_filter,0 , 40000, result_spec)
-
 				for note in noteList.notes:
 					if note.title==note_title:
 						shardId=user_store.getUser(session["access_token"]).shardId
@@ -222,12 +212,21 @@ def main():
 				evernote_url=EN_URL + "/Home.action"
 			return render_template("saved.html", giphy_url=giphy_url, evernote_url=evernote_url)
 		else:
-			return "error finding the gif"
+			return render_template("error.html", error_message="Error finding the GIF")
 
 	else:
-		return "server error"
+		return render_template("error.html", error_message="Unsuported HTTP method.  Please use GET or POST.")
 
-
+#for debugging
+@app.route("/clear")
+def clears():
+	try:
+		del session["access_token"]
+		del session['oauth_token']
+		del session['oauth_token_secret']
+	except KeyError:
+		pass
+	return render_template("reset.html")
 
 
 if __name__=="__main__":
