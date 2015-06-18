@@ -13,10 +13,11 @@ from evernote.edam.error.ttypes import EDAMUserException
 
 import binascii
 import hashlib
+import json
 
 giphy_api_key="dc6zaTOxFJmzC" #public beta key
-CONSUMER_KEY="PUT API KEY HERE"
-CONSUMER_SECRET="PUT API SECRET HERE"
+CONSUMER_KEY="internal-dev"
+CONSUMER_SECRET="platform123"
 EN_URL="https://sandbox.evernote.com"
 
 if CONSUMER_KEY=="PUT API KEY HERE" or CONSUMER_KEY=="" or CONSUMER_SECRET=="PUT API SECRET HERE" or CONSUMER_SECRET=="":
@@ -65,9 +66,13 @@ def main():
 
 			#get tags and pass them to the page because the giphy api only show tags for random images
 			giphy_tags=''
-			for tag in response['data']['tags']:
-				giphy_tags+=tag+', '
-			giphy_tags=giphy_tags[:-2]
+			try:
+				response['data']['tags']
+				for tag in response['data']['tags']:
+					giphy_tags+=tag+', '
+				giphy_tags=giphy_tags[:-2]
+			except KeyError:
+				pass
 
 			return render_template("index.html", giphy_url=giphy_url, giphy_id=giphy_id, giphy_tags=giphy_tags) 
 			session["access_token"]
