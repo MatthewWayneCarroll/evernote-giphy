@@ -16,8 +16,8 @@ import hashlib
 import json
 
 giphy_api_key="dc6zaTOxFJmzC" #public beta key
-CONSUMER_KEY="internal-dev"
-CONSUMER_SECRET="platform123"
+CONSUMER_KEY="PUT API KEY HERE"
+CONSUMER_SECRET="PUT API SECRET HERE"
 EN_URL="https://sandbox.evernote.com"
 
 if CONSUMER_KEY=="PUT API KEY HERE" or CONSUMER_KEY=="" or CONSUMER_SECRET=="PUT API SECRET HERE" or CONSUMER_SECRET=="":
